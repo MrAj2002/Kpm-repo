@@ -1,1 +1,72 @@
+name: Build and Deploy Aniyomi Extension
 
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Compile APK and Update Repo
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout repository code
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Set up Java Development Kit (JDK 17 required for Android)
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 3. Setup Android SDK
+      - name: Setup Android SDK
+        uses: actions/setup-android@v3
+
+      # 4. Create output folder for compiled APKs
+      - name: Prepare APK Output Directory
+        run: |
+          mkdir -p apk
+
+      # 5. Compile Kotlin file into Android APK
+      # Note: For full extension compilation, your repo needs the Gradle wrapper setup.
+      - name: Build Extension APK
+        run: |
+          echo "Compiling extensions..."
+          if [ -f "./gradlew" ]; then
+            chmod +x gradlew
+            ./gradlew assembleRelease
+            cp app/build/outputs/apk/release/*.apk apk/animekhor-v1.0.apk
+          else
+            echo "Gradle wrapper missing. Ensure Android Gradle wrapper files exist."
+          fi
+
+      # 6. Update index.min.json with valid APK download link
+      - name: Generate index.min.json
+        run: |
+          cat <<EOF > index.min.json
+          [
+            {
+              "name": "AnimeKhor",
+              "pkg": "eu.kanade.tachiyomi.animeextension.en.animekhor",
+              "apk": "https://raw.githubusercontent.com/${{ github.repository }}/main/apk/animekhor-v1.0.apk",
+              "lang": "en",
+              "code": 1,
+              "version": "1.0.0",
+              "nsfw": 0
+            }
+          ]
+          EOF
+
+      # 7. Commit compiled APK and index back to GitHub
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add apk/ index.min.json
+          git commit -m "Automated build: Update APK and index.min.json" || exit 0
+          git push
